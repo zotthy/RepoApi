@@ -5,7 +5,9 @@ import app.task.dataModels.DataResponse;
 import app.task.dataModels.Repository;
 import app.task.exceptions.UserNotFoundException;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.Arrays;
@@ -25,22 +27,28 @@ public class ApiService {
     }
 
     public List<DataResponse> getRepozitoryList(String name) {
-        Repository[] data = restTemplate.getForObject("https://api.github.com/users/" + name + "/repos", Repository[].class);
-        if (data == null) {
-            throw new UserNotFoundException("User not ", 404);
-        } else {
+        try {
+            Repository[] data = restTemplate.getForObject("https://api.github.com/users/" + name + "/repos", Repository[].class);
+            if (data == null || data.length == 0) {
+                throw new UserNotFoundException("User not found repozytory", 404);
+            }
             return Arrays.stream(data)
                     .filter(repo -> !repo.isFork())
                     .map(repo -> {
-                        List<Branch> branches = getBranch(repo.getName());
+                        List<Branch> branches = getBranch(repo.getOwner().getLogin() ,repo.getName());
                         return new DataResponse(repo.getName(), repo.getOwner().getLogin(), branches);
                     })
                     .collect(Collectors.toList());
+        } catch (HttpClientErrorException e) {
+            if (e.getStatusCode() == HttpStatus.NOT_FOUND) {
+                throw new UserNotFoundException("User not found", 404);
+            }
+            throw e;
         }
     }
 
-    private List<Branch> getBranch(String repoName) {
-        Branch[] data = restTemplate.getForObject("https://api.github.com/repos/zotthy/" + repoName + "/branches", Branch[].class);
+    private List<Branch> getBranch(String userName, String repoName) {
+        Branch[] data = restTemplate.getForObject("https://api.github.com/repos/" + userName + "/" + repoName + "/branches", Branch[].class);
         if (data == null || data.length == 0) {
             System.out.println("branch is null or empty");
             return Collections.emptyList();
